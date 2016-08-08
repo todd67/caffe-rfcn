@@ -354,7 +354,8 @@ function(caffe_parse_linker_libs Caffe_LINKER_LIBS_variable folders_var flags_va
       list(APPEND libflags -l${CMAKE_MATCH_1})
       list(APPEND folders    ${folder})
     else()
-      message(FATAL_ERROR "Logic error. Need to update cmake script")
+      list(APPEND libflags -l${lib})
+      #message(WARNING "Logic error. Need to update cmake script for ${lib}")
     endif()
   endforeach()
 

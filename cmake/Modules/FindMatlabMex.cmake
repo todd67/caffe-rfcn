@@ -22,16 +22,16 @@ if(APPLE)
   endforeach()
 endif()
 
-if(UNIX)
-   execute_process(COMMAND which matlab OUTPUT_STRIP_TRAILING_WHITESPACE
-                   OUTPUT_VARIABLE __out RESULT_VARIABLE __res)
-
-   if(__res MATCHES 0) # Suppress `readlink` warning if `which` returned nothing
-     execute_process(COMMAND which matlab  COMMAND xargs readlink
-                     COMMAND xargs dirname COMMAND xargs dirname COMMAND xargs echo -n
-                     OUTPUT_VARIABLE __matlab_root OUTPUT_STRIP_TRAILING_WHITESPACE)
-   endif()
-endif()
+#if(UNIX)
+#   execute_process(COMMAND which matlab OUTPUT_STRIP_TRAILING_WHITESPACE
+#                   OUTPUT_VARIABLE __out RESULT_VARIABLE __res)
+#
+#   if(__res MATCHES 0) # Suppress `readlink` warning if `which` returned nothing
+#     execute_process(COMMAND which matlab  COMMAND xargs readlink
+#                     COMMAND xargs dirname COMMAND xargs dirname COMMAND xargs echo -n
+#                     OUTPUT_VARIABLE __matlab_root OUTPUT_STRIP_TRAILING_WHITESPACE)
+#   endif()
+#endif()
 
 
 find_path(Matlab_DIR NAMES bin/mex bin/mexext PATHS ${__matlab_root}

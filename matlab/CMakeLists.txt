@@ -16,6 +16,8 @@ else()
   return()
 endif()
 
+message(STATUS "Building MATLAB using ${build_using}")
+
 if(NOT BUILD_SHARED_LIBS AND build_using MATCHES Matlab)
   message(FATAL_ERROR "Matlab MEX interface (with default mex options file) can only be built if caffe is compiled as shared library. Please enable 'BUILD_SHARED_LIBS' in CMake. Aternativelly you can switch to Octave compiler.")
 endif()
@@ -41,13 +43,19 @@ set(folders $<TARGET_LINKER_FILE_DIR:caffe> ${folders})
 # prepare linker flag lists
 string(REPLACE ";" ";-L" link_folders "-L${folders}")
 string(REPLACE ";" ":"  rpath_folders   "${folders}")
+list(APPEND link_folders "-L${PROJECT_BINARY_DIR}")
 
 if(build_using MATCHES "Matlab")
-  set(libflags -lcaffe${Caffe_POSTFIX} ${libflags}) # Matlab R2014a complans for -Wl,--whole-archive
+  # Hard-code list of library tot avoid problem with python2.7
+  set(libflags -lcaffe${Caffe_POSTFIX} -lpthread -lglog -lgflags -lboost_system -llmdb -lcudart -lcurand -lcublas -lprotobuf -lmwgpu) # Matlab R2014a complans for -Wl,--whole-archive
+  set(incflags -I${Matlab_DIR}/toolbox/distcomp/gpu/extern/include)
+
+  message(STATUS "libflags: ${libflags}")
+  message(STATUS "incflags: ${incflags}")
 
   caffe_fetch_and_set_proper_mexext(Matlab_caffe_mex)
   add_custom_command(OUTPUT ${Matlab_caffe_mex} COMMAND ${Matlab_mex}
-      ARGS -output ${Matlab_caffe_mex} ${Matlab_srcs} ${cflags} ${link_folders} ${libflags}
+      ARGS -output ${Matlab_caffe_mex} ${Matlab_srcs} ${cflags} ${link_folders} ${libflags} ${incflags}
       DEPENDS caffe COMMENT "Building Matlab interface: ${Matlab_caffe_mex}" VERBATIM)
   add_custom_target(matlab ALL DEPENDS ${Matlab_caffe_mex} SOURCES ${Matlab_srcs})
 

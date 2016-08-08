@@ -4,7 +4,7 @@ endif()
 
 # Known NVIDIA GPU achitectures Caffe can be compiled for.
 # This list will be used for CUDA_ARCH_NAME = All option
-set(Caffe_known_gpu_archs "20 21(20) 30 35 50")
+set(Caffe_known_gpu_archs "20 21(20) 30 35 50 60")
 
 ################################################################################################
 # A function for automatic detection of GPUs installed  (if autodetection is enabled)
@@ -56,7 +56,7 @@ endfunction()
 #   caffe_select_nvcc_arch_flags(out_variable)
 function(caffe_select_nvcc_arch_flags out_variable)
   # List of arch names
-  set(__archs_names "Fermi" "Kepler" "Maxwell" "All" "Manual")
+  set(__archs_names "Fermi" "Kepler" "Maxwell" "Pascal" "All" "Manual")
   set(__archs_name_default "All")
   if(NOT CMAKE_CROSSCOMPILING)
     list(APPEND __archs_names "Auto")
@@ -89,6 +89,8 @@ function(caffe_select_nvcc_arch_flags out_variable)
     set(__cuda_arch_bin "30 35")
   elseif(${CUDA_ARCH_NAME} STREQUAL "Maxwell")
     set(__cuda_arch_bin "50")
+  elseif(${CUDA_ARCH_NAME} STREQUAL "Pascal")
+    set(__cuda_arch_bin "60")
   elseif(${CUDA_ARCH_NAME} STREQUAL "All")
     set(__cuda_arch_bin ${Caffe_known_gpu_archs})
   elseif(${CUDA_ARCH_NAME} STREQUAL "Auto")
@@ -132,7 +134,7 @@ function(caffe_select_nvcc_arch_flags out_variable)
 endfunction()
 
 ################################################################################################
-# Short command for cuda compilation
+# Short command for cuda comnpilation
 # Usage:
 #   caffe_cuda_compile(<objlist_variable> <cuda_files>)
 macro(caffe_cuda_compile objlist_variable)
@@ -183,38 +185,8 @@ function(detect_cuDNN)
     set(HAVE_CUDNN  TRUE PARENT_SCOPE)
     set(CUDNN_FOUND TRUE PARENT_SCOPE)
 
-    file(READ ${CUDNN_INCLUDE}/cudnn.h CUDNN_VERSION_FILE_CONTENTS)
-
-    # cuDNN v3 and beyond
-    string(REGEX MATCH "define CUDNN_MAJOR * +([0-9]+)"
-           CUDNN_VERSION_MAJOR "${CUDNN_VERSION_FILE_CONTENTS}")
-    string(REGEX REPLACE "define CUDNN_MAJOR * +([0-9]+)" "\\1"
-           CUDNN_VERSION_MAJOR "${CUDNN_VERSION_MAJOR}")
-    string(REGEX MATCH "define CUDNN_MINOR * +([0-9]+)"
-           CUDNN_VERSION_MINOR "${CUDNN_VERSION_FILE_CONTENTS}")
-    string(REGEX REPLACE "define CUDNN_MINOR * +([0-9]+)" "\\1"
-           CUDNN_VERSION_MINOR "${CUDNN_VERSION_MINOR}")
-    string(REGEX MATCH "define CUDNN_PATCHLEVEL * +([0-9]+)"
-           CUDNN_VERSION_PATCH "${CUDNN_VERSION_FILE_CONTENTS}")
-    string(REGEX REPLACE "define CUDNN_PATCHLEVEL * +([0-9]+)" "\\1"
-           CUDNN_VERSION_PATCH "${CUDNN_VERSION_PATCH}")
-
-    if(NOT CUDNN_VERSION_MAJOR)
-      set(CUDNN_VERSION "???")
-    else()
-      set(CUDNN_VERSION "${CUDNN_VERSION_MAJOR}.${CUDNN_VERSION_MINOR}.${CUDNN_VERSION_PATCH}")
-    endif()
-
-    message(STATUS "Found cuDNN: ver. ${CUDNN_VERSION} found (include: ${CUDNN_INCLUDE}, library: ${CUDNN_LIBRARY})")
-
-    string(COMPARE LESS "${CUDNN_VERSION_MAJOR}" 3 cuDNNVersionIncompatible)
-    if(cuDNNVersionIncompatible)
-      message(FATAL_ERROR "cuDNN version >3 is required.")
-    endif()
-
-    set(CUDNN_VERSION "${CUDNN_VERSION}" PARENT_SCOPE)
     mark_as_advanced(CUDNN_INCLUDE CUDNN_LIBRARY CUDNN_ROOT)
-
+    message(STATUS "Found cuDNN (include: ${CUDNN_INCLUDE}, library: ${CUDNN_LIBRARY})")
   endif()
 endfunction()
 
@@ -222,7 +194,8 @@ endfunction()
 ###  Non macro section
 ################################################################################################
 
-find_package(CUDA 5.5 QUIET)
+# Minimum CUDA toolkit version supported is 7.0 bacause our current cuDNN library is for CUDA 7.0
+find_package(CUDA 7.0 QUIET)
 find_cuda_helper_libs(curand)  # cmake 2.8.7 compartibility which doesn't search for curand
 
 if(NOT CUDA_FOUND)
@@ -237,18 +210,52 @@ list(APPEND Caffe_LINKER_LIBS ${CUDA_CUDART_LIBRARY}
 
 # cudnn detection
 if(USE_CUDNN)
-  detect_cuDNN()
-  if(HAVE_CUDNN)
-    add_definitions(-DUSE_CUDNN)
-    include_directories(SYSTEM ${CUDNN_INCLUDE})
-    list(APPEND Caffe_LINKER_LIBS ${CUDNN_LIBRARY})
+#  detect_cuDNN()
+#  if(HAVE_CUDNN)
+#    add_definitions(-DUSE_CUDNN)
+#    include_directories(SYSTEM ${CUDNN_INCLUDE})
+#    list(APPEND Caffe_LINKER_LIBS ${CUDNN_LIBRARY})
+#  endif()
+
+  if(CUDA_VERSION_MAJOR EQUAL 7)
+    set(3RDPARTY_CUDNN_DIR ${3RDPARTY_DIR}/cudnn-7.0-linux-x64-v4.0)
+  else() # CUDA 8 and onward
+    set(3RDPARTY_CUDNN_DIR ${3RDPARTY_DIR}/cudnn-8.0-linux-x64-v5.0)
+  endif()
+
+  set(HAVE_CUDNN true)
+  add_definitions(-DUSE_CUDNN)
+  message(STATUS "CUDNN is in ${3RDPARTY_CUDNN_DIR}")
+
+  include_directories(${3RDPARTY_CUDNN_DIR}/include)
+  list(APPEND Caffe_LINKER_LIBS cudnn)
+
+  configure_file(${3RDPARTY_CUDNN_DIR}/lib64/libcudnn.so ${PROJECT_BINARY_DIR}/libcudnn.so COPYONLY)
+
+  if(CUDA_VERSION_MAJOR EQUAL 7)
+    execute_process(COMMAND ln -s -f libcudnn.so libcudnn.so.4 WORKING_DIRECTORY ${PROJECT_BINARY_DIR})
+  else()
+    execute_process(COMMAND ln -s -f libcudnn.so libcudnn.so.5 WORKING_DIRECTORY ${PROJECT_BINARY_DIR})
   endif()
 endif()
 
+# Enable C++11
+list(APPEND CUDA_NVCC_FLAGS -std=c++11)
+SET(CUDA_PROPAGATE_HOST_FLAGS OFF)
+
 # setting nvcc arch flags
-caffe_select_nvcc_arch_flags(NVCC_FLAGS_EXTRA)
-list(APPEND CUDA_NVCC_FLAGS ${NVCC_FLAGS_EXTRA})
-message(STATUS "Added CUDA NVCC flags for: ${NVCC_FLAGS_EXTRA_readable}")
+#caffe_select_nvcc_arch_flags(NVCC_FLAGS_EXTRA)
+#list(APPEND CUDA_NVCC_FLAGS ${NVCC_FLAGS_EXTRA})
+#message(STATUS "Added CUDA NVCC flags for: ${NVCC_FLAGS_EXTRA_readable}")
+list(APPEND CUDA_NVCC_FLAGS
+                -gencode arch=compute_30,code=sm_30
+                -gencode arch=compute_35,code=sm_35
+                -gencode arch=compute_50,code=sm_50
+                -gencode arch=compute_50,code=compute_50)
+if(CUDA_VERSION_MAJOR EQUAL 8)                
+  list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_60,code=sm_60)
+endif()
+message(STATUS "CUDA NVCC Flags: ${CUDA_NVCC_FLAGS}")
 
 # Boost 1.55 workaround, see https://svn.boost.org/trac/boost/ticket/9392 or
 # https://github.com/ComputationalRadiationPhysics/picongpu/blob/master/src/picongpu/CMakeLists.txt
